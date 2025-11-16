@@ -1,4 +1,4 @@
-import LineAnalyzer from './LineAnalyzer.js';
+import { LineAnalyzer } from './';
 
 const LineMapper = {
   buildMap(lines) {

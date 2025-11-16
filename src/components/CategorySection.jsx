@@ -1,3 +1,4 @@
+import React, { useMemo, useCallback } from 'react';
 import {
   Box,
   Flex,
@@ -9,41 +10,79 @@ import {
   useDisclosure
 } from "@chakra-ui/react";
 import { MdArrowDropDown, MdArrowDropUp } from 'react-icons/md';
-import ChangeRenderers from './ChangeRenderers';
 
-const CategorySection = ({ title, changes, color, type }) => {
-  const { isOpen, onToggle } = useDisclosure({ defaultIsOpen: true });
+import { ChangeRenderers } from './';
+
+const CategorySection = ({ title, changes, color, categoryKey, className, onChangeClick }) => {
+  const { isOpen, onToggle } = useDisclosure({ defaultIsOpen: false });
   
-  const renderChange = (change, index) => {
-    switch (type) {
+  const renderChange = useCallback((change, index) => {
+    switch (categoryKey) {
       case "moveCodeBlock":
-        return ChangeRenderers.renderMovedBlock(change, index);
+        return ChangeRenderers.renderMove(change, index);
+        
       case "deleteCode":
-        return ChangeRenderers.renderDeletion(change, index);
+        return ChangeRenderers.renderDelete(change, index);
+        
       case "addCode":
-        return ChangeRenderers.renderAddition(change, index);
+        return ChangeRenderers.renderAdd(change, index);
+
+      case 'replaceCode':
+      case "updateTryCatch":
+        return ChangeRenderers.renderReplace(change, index);
+
       default:
-        return ChangeRenderers.renderModification(change, index);
+        return ChangeRenderers.renderUpdate(change, index);
     }
-  };
+  }, [categoryKey]);
+  
+  const handleChangeClick = useCallback((change) => {
+    if (onChangeClick) {
+      // Handle different property names that might exist on change object
+      const sourceLineNumber = change.lineNumber || change.sourceLine;
+      const changedLineNumber = change.changedLineNumber || change.changedLine || sourceLineNumber;
+      
+      onChangeClick({
+        sourceLineNumber,
+        changedLineNumber
+      });
+    }
+  }, [onChangeClick]);
   
   if (!changes || changes.length === 0) return null;
   
-  // Create a safe className from the title
-  const categoryClassName = `category-${type}`;
+  // Memoize the entire changes list to prevent re-rendering all items
+  const changeItems = useMemo(() => 
+    changes.map((change, index) => (
+      <Box 
+        key={index}
+        className={`change-item change-${categoryKey}-${index}`}
+        data-change-index={index}
+        data-line-number={change.lineNumber || 'unknown'}
+        onClick={() => handleChangeClick(change)}
+        cursor="pointer"
+        _hover={{ bg: 'gray.50' }}
+        borderRadius="md"
+        transition="background-color 0.2s"
+      >
+        {renderChange(change, index)}
+      </Box>
+    )),
+    [changes, categoryKey, handleChangeClick, renderChange]
+  );
   
   return (
     <Box 
-      className={`category-section ${categoryClassName}`}
+      className={`category-section ${className}`}
       mb={4} 
       borderWidth="1px" 
       borderRadius="lg" 
       overflow="hidden"
-      data-category={type}
+      data-category={categoryKey}
       data-count={changes.length}
     >
       <Flex
-        className={`category-header ${categoryClassName}-header`}
+        className={`category-header ${className}-header`}
         bg={color}
         p={3}
         cursor="pointer"
@@ -52,14 +91,15 @@ const CategorySection = ({ title, changes, color, type }) => {
         justify="space-between"
         data-expanded={isOpen}
       >
-        <HStack className="category-title-container">
+        <HStack className="category-title-container" spacing={3}>
           <Heading size="sm" color="white" className="category-title">
             {title}
           </Heading>
           <Badge 
             className="category-badge"
-            colorScheme="whiteAlpha" 
+            colorScheme="blackAlpha" 
             variant="solid"
+            fontSize="md"
           >
             {changes.length}
           </Badge>
@@ -72,21 +112,12 @@ const CategorySection = ({ title, changes, color, type }) => {
       </Flex>
       <Collapse in={isOpen}>
         <VStack 
-          className={`category-content ${categoryClassName}-content`}
+          className={`category-content ${className}-content`}
           align="stretch" 
           p={4} 
           spacing={3}
         >
-          {changes.map((change, index) => (
-            <Box 
-              key={index}
-              className={`change-item change-${type}-${index}`}
-              data-change-index={index}
-              data-line-number={change.lineNumber || change.originalLine || 'unknown'}
-            >
-              {renderChange(change, index)}
-            </Box>
-          ))}
+          {changeItems}
         </VStack>
       </Collapse>
     </Box>
