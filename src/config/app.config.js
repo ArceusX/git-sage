@@ -10,7 +10,7 @@ export const helpText = {
   ],
   "Save Policy": [
     "1. Text in the split panels are not automatically saved, and will be cleared on page refresh, unless...",
-    "2. You save your progress to localStorage (and restore it later) by clicking the `Save` button",
+    "2. You save your progress to localStorage (restorable later) by clicking the `Save` button",
     "3. The `Clear` button deletes your save in localStorage. It does not clear the current text content, but you can easily clear it by then refreshing the app",
   ],
   "Results Window": [

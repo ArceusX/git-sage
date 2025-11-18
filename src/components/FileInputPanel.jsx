@@ -1,333 +1,377 @@
-import React, { useRef, useMemo, useState, useImperativeHandle, forwardRef, useEffect, useCallback } from 'react';
+import React, { forwardRef, useEffect, useState, useImperativeHandle } from 'react';
 import { Box, VStack, Heading, Button, HStack, Text } from '@chakra-ui/react';
+import { EditorView, keymap, gutter, GutterMarker, lineNumbers, Decoration } from '@codemirror/view';
+import { EditorState, StateField, StateEffect, RangeSet } from '@codemirror/state';
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { oneDark } from '@codemirror/theme-one-dark';
 
-const initialLineCount = 15;
-const fontSize = 15;
-const lineHeight = 1.5;
-const padding = 8;
+import { java } from '@codemirror/lang-java';
+import { javascript } from '@codemirror/lang-javascript';
+import { python } from '@codemirror/lang-python';
+import { cpp } from '@codemirror/lang-cpp';
+import { sql } from '@codemirror/lang-sql';
 
-const textInitialHeight = lineHeight * fontSize * initialLineCount + padding * 2;
+import { html } from '@codemirror/lang-html';
+import { css } from '@codemirror/lang-css';
+import { json } from '@codemirror/lang-json';
+import { markdown } from '@codemirror/lang-markdown';
+import { yaml } from '@codemirror/lang-yaml';
 
-const FileInputPanel = forwardRef(({ title, value, onChange, onFileUpload }, ref) => {
-  const textareaRef = useRef(null);
-  const lineNumbersRef = useRef(null);
-  const breakpointsRef = useRef(null);
-  const [actionInfo, setActionInfo] = useState(null);
-  const [breakpoints, setBreakpoints] = useState(new Set());
-  const panelType = title.toLowerCase().includes('source') ? 'source' : 'changed';
-  const storageKey = `fileInputPanel-${title.replace(/\s+/g, '-').toLowerCase()}`;
-  const breakpointsStorageKey = `${storageKey}-breakpoints`;
-  const [isInitialized, setIsInitialized] = useState(false);
+// Breakpoint marker (purely visual)
+class BreakpointMarker extends GutterMarker {
+  toDOM() {
+    const div = document.createElement('div');
+    div.style.width = '10px';
+    div.style.height = '10px';
+    div.style.borderRadius = '50%';
+    div.style.backgroundColor = 'red';
+    div.style.marginTop = '4px';
+    div.style.marginLeft = '2px';
+    return div;
+  }
+}
+const breakpointMarker = new BreakpointMarker();
 
-  useImperativeHandle(ref, () => ({
-    scrollToLine: (lineNumber) => {
-      const lineNumberElement = lineNumbersRef.current?.querySelector(`.line-number[data-line="${lineNumber}"]`);
-      if (lineNumberElement && textareaRef.current) {
-        textareaRef.current.scrollTop = (lineNumber - 1) * lineHeight * fontSize;
-        lineNumberElement.style.backgroundColor = '#FEF08A';
-        lineNumberElement.style.transition = 'background-color 0.3s';
-        setTimeout(() => { lineNumberElement.style.backgroundColor = ''; }, 12000);
+function createBreakpointExtension(storageKey) {
+  const toggleBreakpointEffect = StateEffect.define();
+  const setBreakpointsEffect = StateEffect.define();
+  const clearBreakpointsEffect = StateEffect.define();
+
+  const breakpointState = StateField.define({
+    create() { return RangeSet.empty; },
+    update(set, tr) {
+      // If the document changed dramatically (like file upload), clear breakpoints
+      if (tr.docChanged) {
+        const docLengthChange = tr.newDoc.length - (tr.startState.doc.length || 0);
+        // If the entire document was replaced (large change), clear breakpoints
+        if (Math.abs(docLengthChange) > tr.startState.doc.length * 0.5) {
+          set = RangeSet.empty;
+          localStorage.removeItem(`${storageKey}-breakpoints`);
+          return set;
+        }
       }
-    }
-  }));
 
-  useEffect(() => {
-    if (!isInitialized) {
+      // Try to map breakpoints, but catch errors if positions are invalid
       try {
-        const savedContent = localStorage.getItem(storageKey);
-        if (savedContent && savedContent !== value) {
-          onChange({ target: { value: savedContent } });
-        }
-        
-        const savedBreakpoints = localStorage.getItem(breakpointsStorageKey);
-        if (savedBreakpoints) {
-          setBreakpoints(new Set(JSON.parse(savedBreakpoints)));
-        }
-      } catch (error) {
-        console.error('Failed to load from localStorage:', error);
+        set = set.map(tr.changes);
+      } catch (e) {
+        // If mapping fails, clear all breakpoints
+        set = RangeSet.empty;
+        localStorage.removeItem(`${storageKey}-breakpoints`);
       }
-      setIsInitialized(true);
+
+      for (let effect of tr.effects) {
+        if (effect.is(toggleBreakpointEffect)) {
+          const pos = effect.value;
+          let has = false;
+          set.between(pos, pos, () => (has = true));
+          set = has
+            ? set.update({ filter: f => f !== pos })
+            : set.update({ add: [breakpointMarker.range(pos)] });
+          
+          // Save breakpoints to localStorage
+          const breakpoints = [];
+          set.between(0, Infinity, (from) => breakpoints.push(from));
+          localStorage.setItem(`${storageKey}-breakpoints`, JSON.stringify(breakpoints));
+        }
+        if (effect.is(setBreakpointsEffect)) {
+          const positions = effect.value;
+          const ranges = positions.map(pos => breakpointMarker.range(pos));
+          set = RangeSet.of(ranges);
+        }
+        if (effect.is(clearBreakpointsEffect)) {
+          set = RangeSet.empty;
+          localStorage.removeItem(`${storageKey}-breakpoints`);
+        }
+      }
+      return set;
     }
-  }, [storageKey, breakpointsStorageKey, isInitialized, onChange, value]);
+  });
 
-  const handleScroll = (e) => { 
-    if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = e.target.scrollTop; 
-    if (breakpointsRef.current) breakpointsRef.current.scrollTop = e.target.scrollTop;
-  };
-  
-  const lines = useMemo(() => value.split('\n'), [value]);
+  function toggle(view, pos) {
+    view.dispatch({ effects: toggleBreakpointEffect.of(pos) });
+  }
 
-  const toggleBreakpoint = useCallback((lineNumber) => {
-    setBreakpoints(prev => {
-      const newBreakpoints = new Set(prev);
-      if (newBreakpoints.has(lineNumber)) {
-        newBreakpoints.delete(lineNumber);
-      } else {
-        newBreakpoints.add(lineNumber);
-      }
-      return newBreakpoints;
-    });
-  }, []);
+  function setBreakpoints(view, positions) {
+    view.dispatch({ effects: setBreakpointsEffect.of(positions) });
+  }
 
-  const updateValue = useCallback((newVal) => {
-    if (breakpoints.size > 0) {
-      const oldArr = value.split('\n');
-      const newArr = newVal.split('\n');
-      
-      let prefixLen = 0;
-      const minLen = Math.min(oldArr.length, newArr.length);
-      while (prefixLen < minLen && oldArr[prefixLen] === newArr[prefixLen]) {
-        prefixLen++;
+  function clearBreakpoints(view) {
+    view.dispatch({ effects: clearBreakpointsEffect.of(null) });
+  }
+
+  return [
+    breakpointState,
+    gutter({
+      class: 'cm-breakpoint-gutter',
+      markers: v => v.state.field(breakpointState),
+      domEventHandlers: {
+        mousedown(view, line) {
+          toggle(view, line.from);
+          return true;
+        }
       }
+    }),
+    { setBreakpoints, clearBreakpoints }
+  ];
+}
+
+// Line highlight extension
+function createLineHighlightExtension() {
+  const highlightEffect = StateEffect.define();
+  const clearHighlightEffect = StateEffect.define();
+
+  const lineHighlightMark = Decoration.line({
+    attributes: { style: 'background-color: rgba(255, 255, 0, 0.3);' }
+  });
+
+  const highlightState = StateField.define({
+    create() { return Decoration.none; },
+    update(decorations, tr) {
+      decorations = decorations.map(tr.changes);
       
-      let suffixLen = 0;
-      while (suffixLen < minLen - prefixLen && 
-             oldArr[oldArr.length - 1 - suffixLen] === newArr[newArr.length - 1 - suffixLen]) {
-        suffixLen++;
+      for (let effect of tr.effects) {
+        if (effect.is(highlightEffect)) {
+          const lineNum = effect.value;
+          const line = tr.state.doc.line(lineNum);
+          decorations = Decoration.set([lineHighlightMark.range(line.from)]);
+        }
+        if (effect.is(clearHighlightEffect)) {
+          decorations = Decoration.none;
+        }
       }
+      return decorations;
+    },
+    provide: f => EditorView.decorations.from(f)
+  });
+
+  function highlightLine(view, lineNum) {
+    if (lineNum > 0 && lineNum <= view.state.doc.lines) {
+      view.dispatch({ effects: highlightEffect.of(lineNum) });
       
-      const newBreakpoints = new Set();
-      const lineDiff = newArr.length - oldArr.length;
-      
-      breakpoints.forEach(lineNum => {
-        const idx = lineNum - 1;
-        
-        if (idx < prefixLen) {
-          newBreakpoints.add(lineNum);
-        }
-        else if (idx >= oldArr.length - suffixLen) {
-          const newLine = lineNum + lineDiff;
-          if (newLine > 0 && newLine <= newArr.length) {
-            newBreakpoints.add(newLine);
-          }
-        }
-        else {
-          const content = oldArr[idx];
-          if (content.trim() !== '') {
-            const oldMiddleStart = prefixLen;
-            const occurrenceIdx = oldArr.slice(oldMiddleStart, idx)
-              .filter(line => line === content).length;
-            
-            const newMiddleStart = prefixLen;
-            const newMiddleEnd = newArr.length - suffixLen;
-            let currentOccurrence = 0;
-            
-            for (let i = newMiddleStart; i < newMiddleEnd; i++) {
-              if (newArr[i] === content) {
-                if (currentOccurrence === occurrenceIdx) {
-                  newBreakpoints.add(i + 1);
-                  break;
-                }
-                currentOccurrence++;
-              }
-            }
-          }
-        }
+      // Scroll to line
+      const line = view.state.doc.line(lineNum);
+      view.dispatch({
+        effects: EditorView.scrollIntoView(line.from, { y: 'center' })
       });
       
-      setBreakpoints(newBreakpoints);
+      // Clear after 10 seconds
+      setTimeout(() => {
+        view.dispatch({ effects: clearHighlightEffect.of(null) });
+      }, 10000);
     }
-    
-    onChange({ target: { value: newVal } });
-  }, [breakpoints, value, onChange]);
+  }
 
-  const handleTextChange = useCallback((e) => { 
-    const newVal = e.target.value;
-    updateValue(newVal);
-    if (actionInfo) setActionInfo(null); 
-  }, [updateValue, actionInfo]);
+  return [highlightState, { highlightLine }];
+}
 
-  const insertAtSelection = (text) => {
-    const textarea = textareaRef.current;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const newValue = value.substring(0, start) + text + value.substring(end);
-    updateValue(newValue);
-    requestAnimationFrame(() => { textarea.selectionStart = textarea.selectionEnd = start + text.length; });
-  };
+// Language selection
+function getLang(title) {
+  const t = title.toLowerCase();
 
-  const handleKeyDown = useCallback((e) => {
-    const textarea = textareaRef.current;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selected = value.substring(start, end);
-    const currentLineStart = value.lastIndexOf('\n', start - 1) + 1;
+  // --- Core languages ---
+  if (t.includes('python') || t.endsWith('.py')) return python();
+  if (t.includes('java') || t.endsWith('.java')) return java();
+  if (t.includes('cpp') || t.includes('c++') || t.endsWith('.cpp') || t.endsWith('.cc')) return cpp();
+  if (t.includes('ts') || t.endsWith('.ts')) return javascript({ typescript: true });
+  if (t.includes('js') || t.endsWith('.js')) return javascript();
 
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const indent = '  ';
-      const linesArr = value.split('\n');
-      const startLine = value.substring(0, start).split('\n').length - 1;
-      const endLine = value.substring(0, end).split('\n').length - 1;
+  // --- Additional web/config languages ---
+  if (t.includes('sql') || t.endsWith('.sql')) return sql();
+  if (t.includes('html') || t.endsWith('.html') || t.endsWith('.htm')) return html();
+  if (t.includes('css') || t.endsWith('.css')) return css();
+  if (t.includes('json') || t.endsWith('.json')) return json();
+  if (t.includes('md') || t.endsWith('.md')) return markdown();
+  if (t.includes('yaml') || t.includes('yml') || t.endsWith('.yaml') || t.endsWith('.yml')) return yaml();
 
-      if (startLine === endLine && !selected.includes('\n')) {
-        if (e.shiftKey) {
-          if (value.substring(currentLineStart, currentLineStart + indent.length) === indent) {
-            const newValue = value.substring(0, currentLineStart) + value.substring(currentLineStart + indent.length);
-            updateValue(newValue);
-            requestAnimationFrame(() => { textarea.selectionStart = start - indent.length; textarea.selectionEnd = end - indent.length; });
+  // --- Fallback ---
+  return javascript();
+}
+
+
+// Main component
+const FileInputPanel = forwardRef(({ title, value, onChange, onFileUpload }, ref) => {
+  const editorContainerRef = React.useRef(null);
+  const [editor, setEditor] = useState(null);
+  const [actionInfo, setActionInfo] = useState(null);
+  const [lineHeight, setLineHeight] = useState(22);
+  const storageKey = `fileInputPanel-${title.replace(/\s+/g, '-').toLowerCase()}`;
+
+  // Create extensions once (no useMemo needed since we only create them once anyway)
+  const breakpointExtRef = React.useRef(null);
+  const highlightExtRef = React.useRef(null);
+
+  if (!breakpointExtRef.current) {
+    breakpointExtRef.current = createBreakpointExtension(storageKey);
+  }
+  if (!highlightExtRef.current) {
+    highlightExtRef.current = createLineHighlightExtension();
+  }
+
+  const breakpointExt = breakpointExtRef.current;
+  const highlightExt = highlightExtRef.current;
+
+  // Expose highlightLine method to parent
+  useImperativeHandle(ref, () => ({
+    highlightLine: (lineNum) => {
+      if (editor && highlightExt[1]) {
+        highlightExt[1].highlightLine(editor, lineNum);
+      }
+    }
+  }), [editor, highlightExt]);
+
+  // Initialize editor only once
+  useEffect(() => {
+    if (!editorContainerRef.current) return;
+
+    const saved = localStorage.getItem(storageKey) || value || '\u200B'; // zero-width space
+
+    const state = EditorState.create({
+      doc: saved,
+      extensions: [
+        keymap.of([...defaultKeymap, ...historyKeymap]),
+        history(),
+        getLang(title),
+        oneDark,
+        EditorView.lineWrapping,
+        // Gutter order: line numbers first, breakpoint column second
+        lineNumbers(),
+        breakpointExt[0],
+        breakpointExt[1],
+        highlightExt[0],
+        EditorView.updateListener.of(update => {
+          if (update.docChanged) {
+            let val = update.state.doc.toString();
+            if (val === '\u200B') val = ''; // strip ZWSP
+            onChange({ target: { value: val } });
           }
-        } else {
-          const newValue = value.substring(0, currentLineStart) + indent + value.substring(currentLineStart);
-          updateValue(newValue);
-          requestAnimationFrame(() => { textarea.selectionStart = start + indent.length; textarea.selectionEnd = end + indent.length; });
+        })
+      ]
+    });
+
+    const view = new EditorView({ state, parent: editorContainerRef.current });
+    setEditor(view);
+
+    // Restore breakpoints from localStorage
+    const savedBreakpoints = localStorage.getItem(`${storageKey}-breakpoints`);
+    if (savedBreakpoints) {
+      try {
+        const positions = JSON.parse(savedBreakpoints);
+        if (Array.isArray(positions) && positions.length > 0) {
+          breakpointExt[2].setBreakpoints(view, positions);
         }
-      } else {
-        const modified = [...linesArr];
-        for (let i = startLine; i <= endLine; i++) {
-          if (e.shiftKey) {
-            if (modified[i].startsWith(indent)) modified[i] = modified[i].slice(indent.length);
-          } else modified[i] = indent + modified[i];
-        }
-        const newValue = modified.join('\n');
-        updateValue(newValue);
-        return;
+      } catch (e) {
+        console.error('Failed to restore breakpoints:', e);
       }
-      return;
     }
 
-    if (e.key === 'Enter') {
-      const currentLine = value.substring(currentLineStart, start);
-      const indentMatch = currentLine.match(/^\s*/);
-      const indent = indentMatch ? indentMatch[0] : '';
-      e.preventDefault();
-      insertAtSelection('\n' + indent);
-      return;
-    }
+    return () => view.destroy(); // destroy only once on unmount
+  }, []);
 
-    const pairs = {'(':')','[':']','{':'}','"':'"',"'":"'",'`':'`'};
-    if (pairs[e.key] && !e.shiftKey) {
-      e.preventDefault();
-      insertAtSelection(e.key + pairs[e.key]);
-      textarea.selectionStart--;
-      textarea.selectionEnd--;
-      return;
+  // Calculate line height once when editor is ready
+  useEffect(() => {
+    if (!editor) return;
+    const lineEl = editor.dom.querySelector('.cm-line');
+    if (lineEl && lineEl.offsetHeight) {
+      setLineHeight(lineEl.offsetHeight);
     }
+  }, [editor]);
 
-    if ((e.ctrlKey || e.metaKey) && e.key === '/') {
-      e.preventDefault();
-      const startLine = value.substring(0, start).split('\n').length - 1;
-      const endLine = value.substring(0, end).split('\n').length - 1;
-      const linesCopy = value.split('\n');
-      const allCommented = linesCopy.slice(startLine, endLine+1).every(l => l.trim().startsWith('//') || l.trim().startsWith('/*'));
-      for (let i = startLine; i <= endLine; i++) {
-        if (allCommented) {
-          linesCopy[i] = linesCopy[i].replace(/^\s*\/\/?/, '').replace(/^\s*\/\*/, '').replace(/\*\/$/, '');
-        } else {
-          linesCopy[i] = '//' + linesCopy[i];
-        }
-      }
-      updateValue(linesCopy.join('\n'));
-      return;
+  // Apply max height when line height changes
+  useEffect(() => {
+    if (editorContainerRef.current) {
+      editorContainerRef.current.style.maxHeight = `${lineHeight * 40}px`;
     }
-  }, [value, updateValue, insertAtSelection]);
+  }, [lineHeight]);
 
-  const handleFileUploadInternal = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const uploadDate = new Date().toLocaleString();
-      setActionInfo({ type: 'upload', fileName: file.name, date: uploadDate });
-    }
-    onFileUpload(e);
-  };
-
+  // Handlers
   const handleSave = () => {
-    try {
-      localStorage.setItem(storageKey, value);
-      localStorage.setItem(breakpointsStorageKey, JSON.stringify([...breakpoints]));
-      const saveDate = new Date().toLocaleString();
-      setActionInfo({ type: 'save', text: `Save text on ${saveDate}` });
-    } catch (error) {
-      alert(`Failed to save: ${error.message}`);
-    }
+    if (!editor) return;
+    let val = editor.state.doc.toString();
+    if (val === '\u200B') val = ''; // strip ZWSP
+    localStorage.setItem(storageKey, val);
+    const saveDate = new Date().toLocaleString();
+    setActionInfo({ type: 'save', text: `Save text on ${saveDate}` });
   };
 
   const handleClear = () => {
-    try {
-      localStorage.removeItem(storageKey);
-      localStorage.removeItem(breakpointsStorageKey);
-      setBreakpoints(new Set());
-      const clearDate = new Date().toLocaleString();
-      setActionInfo({ type: 'clear', text: `Clear save on ${clearDate}` });
-    } catch (error) {
-      console.error('Failed to clear from localStorage:', error);
-    }
+    if (!editor) return;
+    // Only clear localStorage, keep editor content
+    localStorage.removeItem(storageKey);
+    localStorage.removeItem(`${storageKey}-breakpoints`);
+    const date = new Date().toLocaleString();
+    setActionInfo({ type: 'clear', text: `Clear save on ${date}` });
   };
 
-  const lineNumbers = useMemo(() => 
-    lines.map((line, index) => (
-      <Box key={index} className={`line-number ${line.trim()===''?'line-number-blank':'line-number-visible'}`} data-line={index+1} height={`${lineHeight}em`}>
-        {line.trim()!=='' ? index+1 : ''}
-      </Box>
-    )), [lines]);
+  const handleUpload = e => {
+    const file = e.target.files[0];
+    if (!file || !editor) return onFileUpload(e);
 
-  const breakpointCells = useMemo(() => 
-    lines.map((line, index) => (
-      <Box 
-        key={index} 
-        className={`breakpoint-cell ${breakpoints.has(index+1) ? 'breakpoint-active' : ''}`}
-        data-line={index+1} 
-        height={`${lineHeight}em`}
-        display="flex"
-        alignItems="center"
-        justifyContent="center"
-        cursor="pointer"
-        onClick={() => toggleBreakpoint(index+1)}
-        _hover={{ bg: 'gray.200' }}
-      >
-        {breakpoints.has(index+1) && (
-          <Box 
-            className="breakpoint-dot"
-            width="10px" 
-            height="10px" 
-            borderRadius="50%" 
-            bg="red.500"
-          />
-        )}
-      </Box>
-    )), [lines, breakpoints, toggleBreakpoint]);
+    const uploadDate = new Date().toLocaleString();
+    setActionInfo({ type: 'upload', fileName: file.name, date: uploadDate });
+
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const content = ev.target.result || '\u200B';
+      editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: content } });
+    };
+    reader.readAsText(file);
+    onFileUpload(e);
+  };
 
   return (
-    <Box className={`file-input-panel file-input-${panelType}`} flex={1} display="flex" flexDirection="column" data-panel-type={panelType}>
-      <VStack className="file-panel-content" align="stretch" spacing={3} flex="1">
-        <HStack className="file-panel-header" justify="space-between" align="center" h="50px">
-          <Heading className="file-panel-title" size={{ md:'sm', lg:'md' }}>{title}</Heading>
-          <Text className="file-action-info" fontSize="md" color="gray.600" fontStyle="italic">
-            {actionInfo && actionInfo.type === 'upload' && (
-              <>
-                <Text as="span">Upload </Text>
-                <Text as="span" bg="yellow.50" px={1} borderRadius="sm">{actionInfo.fileName}</Text>
-                <Text as="span"> on {actionInfo.date}</Text>
-              </>
-            )}
-            {actionInfo && (actionInfo.type === 'save' || actionInfo.type === 'clear') && (
-              <Text as="span">{actionInfo.text}</Text>
-            )}
-          </Text>
+    <Box flex={1} display="flex" flexDirection="column">
+      <VStack align="stretch" spacing={3} flex="1">
+        <HStack justify="space-between" align="center" h="40px">
+          <Heading size={{ base: 'md' }}>{title}</Heading>
+          {actionInfo && (
+            <Text fontSize="md" color="gray.700" fontStyle="italic">
+              {actionInfo.type === 'upload' ? (
+                <>
+                  Upload{' '}
+                  <Box as="span" bg="yellow.50" px={1} borderRadius="md">
+                    {actionInfo.fileName}
+                  </Box>{' '}
+                  on {actionInfo.date}
+                </>
+              ) : (
+                actionInfo.text
+              )}
+            </Text>
+          )}
         </HStack>
-        <Box className="file-editor-container" position="relative" height={`${textInitialHeight}px`} display="flex" bg="white" borderRadius="md" border="1px solid" borderColor="gray.300" overflow="hidden">
-          <Box className="line-numbers-container" ref={lineNumbersRef} bg="gray.50" borderRight="1px solid" borderColor="gray.300" overflow="hidden" fontFamily="monospace" fontSize={fontSize} lineHeight={lineHeight} color="gray.500" userSelect="none" minW="50px" maxW="50px" textAlign="right" pr={2} py={2}>
-            {lineNumbers}
-          </Box>
-          <Box className="breakpoints-container" ref={breakpointsRef}
-            bg="gray.50" borderRight="1px solid" borderColor="gray.300" overflow="hidden" fontFamily="monospace" fontSize={fontSize} lineHeight={lineHeight} userSelect="none" w="20px" py={2}>
-            {breakpointCells}
-          </Box>
-          <Box className="file-textarea" as="textarea" ref={textareaRef} value={value} onChange={handleTextChange} onScroll={handleScroll} onKeyDown={handleKeyDown} placeholder={`Paste ${title.toLowerCase()} here...`} fontFamily="monospace" fontSize={fontSize} resize="none" flex="1" bg="transparent" border="none" outline="none" p={2} lineHeight={lineHeight} spellCheck="false" wrap="off" _focus={{ outline:'none' }} sx={{'&::-webkit-scrollbar':{width:'12px',height:'12px'},'&::-webkit-scrollbar-track':{background:'#f1f1f1'},'&::-webkit-scrollbar-thumb':{background:'#888',borderRadius:'6px'},'&::-webkit-scrollbar-thumb:hover':{background:'#555'}}} />
-        </Box>
-        <Box className="file-actions-container" position="relative" w="100%" textAlign="center" mt={2}>
-          <Button className="file-save-button" size="md" colorScheme="blue" variant="outline" w="20%" minW="80px" position="absolute" left={0} top="50%" transform="translateY(-50%)" onClick={handleSave}>
-            💾<Text as="span" display={{ md:'inline', base:'none' }} ml={2}>Save</Text>
-          </Button>
-          <Button className={`file-upload-button file-upload-button-${panelType}`} as="label" variant="outline" cursor="pointer" w="36%" minW="160px" bg="green.100" color="black" mx="auto" _hover={{bg:'green.200'}}>
+
+        <Box
+          ref={editorContainerRef}
+          flex="1"
+          borderRadius="md"
+          border="1px solid"
+          borderColor="gray.300"
+          bg="#282c34"
+          overflow="auto"
+          minHeight="360px"
+          sx={{
+            '.cm-gutters': { display: 'flex !important', flexDirection: 'row !important' },
+            '.cm-scroller': { overflow: 'visible' },
+            '.cm-breakpoint-gutter': {
+              width: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center'
+            },
+            '.cm-content': { fontSize: '14px' },
+            '.cm-line': { fontSize: '14px' }      
+          }}
+        />
+
+        <HStack justify="space-between" mt={2}>
+          <Button colorScheme="blue" variant="outline" onClick={handleSave}>💾 Save</Button>
+          <Button as="label" cursor="pointer" bg="green.100" _hover={{ bg: 'green.200' }}>
             Upload File
-            <input type="file" hidden onChange={handleFileUploadInternal} />
+            <input type="file" hidden onChange={handleUpload} />
           </Button>
-          <Button className="file-clear-button" size="md" colorScheme="red" variant="outline" w="20%" minW="80px" position="absolute" right={0} top="50%" transform="translateY(-50%)" onClick={handleClear}>
-            <Text className="clear-button-text" as="span" display={{ md:'inline', base:'none' }} mr={2}>Clear</Text>
-            ✕
-          </Button>
-        </Box>
+          <Button colorScheme="red" variant="outline" onClick={handleClear}>✕ Clear</Button>
+        </HStack>
       </VStack>
     </Box>
   );

@@ -20,8 +20,6 @@ import {
   ResultsCategories, 
   ResultsClassic, 
   CompareButton,
-  DownloadHTMLCategories,
-  DownloadHTMLClassic,
   HelpHeader,
   Footer,
 } from './components';
@@ -32,7 +30,6 @@ import { subtitle, helpText, appConfig} from './config/app.config';
 const logo = '/categories.png';
 
 // Memoized components to prevent unnecessary re-renders
-const MemoizedFileInputPanel = React.memo(FileInputPanel);
 const MemoizedResultsCategories = React.memo(ResultsCategories);
 const MemoizedResultsClassic = React.memo(ResultsClassic);
 
@@ -81,6 +78,16 @@ const App = ({appName = "Git Sage - Smart Diff Tool"}) => {
     const sourcePanel = document.querySelector('.file-input-panel.source-text');
     if (sourcePanel) {
       sourcePanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, []);
+
+  // Line click handler for classic view
+  const handleLineClick = useCallback(({ sourceLine, changedLine }) => {
+    if (sourceLine && sourceTextRef.current) {
+      sourceTextRef.current.highlightLine(sourceLine);
+    }
+    if (changedLine && changedTextRef.current) {
+      changedTextRef.current.highlightLine(changedLine);
     }
   }, []);
 
@@ -191,13 +198,14 @@ const App = ({appName = "Git Sage - Smart Diff Tool"}) => {
               sourceText={sourceText} 
               changedText={changedText}
               onDiffGenerated={setClassicDiff}
+              onLineClick={handleLineClick}
               appName={appName}
             />
           </TabPanel>
         </TabPanels>
       </Tabs>
     );
-  }, [analysis, handleChangeClick, appName, sourceText, changedText]);
+  }, [analysis, handleChangeClick, handleLineClick, appName, sourceText, changedText]);
 
   return (
     <ChakraProvider>
@@ -230,7 +238,7 @@ const App = ({appName = "Git Sage - Smart Diff Tool"}) => {
             align="start"
           >
             <Box w={{ base: "100%", lg: "50%" }}>
-              <MemoizedFileInputPanel
+              <FileInputPanel
                 ref={sourceTextRef}
                 title="Source Text"
                 value={sourceText}
@@ -240,7 +248,7 @@ const App = ({appName = "Git Sage - Smart Diff Tool"}) => {
               />
             </Box>
             <Box w={{ base: "100%", lg: "50%" }}>
-              <MemoizedFileInputPanel
+              <FileInputPanel
                 ref={changedTextRef}
                 title="Changed Text"
                 value={changedText}

@@ -1,10 +1,102 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useCallback } from 'react';
 import { Box, VStack, HStack, Text } from '@chakra-ui/react';
 import { diffLines } from 'diff';
 import { DownloadHTMLClassic } from './';
 
-const ResultsClassic = ({ sourceText, changedText, onDiffGenerated, appName, logo }) => {
-  
+// Memoized individual diff line component to prevent unnecessary re-renders
+const DiffLine = React.memo(({ line, index, borderColor, sourceLineColor, changedLineColor, onLineClick }) => {
+  const bgColor = line.type === 'deleted' ? 'red.100' 
+    : line.type === 'added' ? 'green.100' 
+    : 'white';
+
+  return (
+    <HStack
+      className={`diff-line diff-line-${line.type}`}
+      data-line-type={line.type}
+      spacing={0}
+      borderBottom="1px solid"
+      borderColor={borderColor}
+      cursor="pointer"
+      _hover={{ bg: 'blue.50' }}
+      onClick={() => onLineClick(line)}
+    >
+      {/* Source line number */}
+      <Box
+        className="line-number line-number-source"
+        minW="50px"
+        maxW="50px"
+        px={2}
+        py={1}
+        borderRight="1px solid"
+        borderColor={borderColor}
+        textAlign="right"
+        fontFamily="monospace"
+        fontSize="sm"
+        fontWeight="bold"
+        bg={line.type === "added" ? "white" : sourceLineColor}
+        color="black"
+        userSelect="none"
+      >
+        {line.sourceLine || ''}
+      </Box>
+
+      {/* Changed line number */}
+      <Box
+        className="line-number line-number-changed"
+        minW="50px"
+        maxW="50px"
+        px={2}
+        py={1}
+        borderRight="1px solid"
+        borderColor={borderColor}
+        textAlign="right"
+        fontFamily="monospace"
+        fontSize="sm"
+        fontWeight="bold"
+        bg={line.type === "deleted" ? "white" : changedLineColor}
+        userSelect="none"
+      >
+        {line.changedLine || ''}
+      </Box>
+
+      {/* Line prefix indicator */}
+      <Box
+        className={`line-prefix line-prefix-${line.type}`}
+        minW="30px"
+        maxW="30px"
+        px={2}
+        py={1}
+        fontFamily="monospace"
+        fontSize="sm"
+        fontWeight="bold"
+        color={line.type === 'deleted' ? 'red.600' : line.type === 'added' ? 'green.600' : 'black'}
+        userSelect="none"
+      >
+        {line.type === 'deleted' ? '-' : line.type === 'added' ? '+' : ' '}
+      </Box>
+
+      {/* Line content */}
+      <Box
+        className={`line-content line-content-${line.type}`}
+        flex="1"
+        px={2}
+        py={1}
+        fontFamily="monospace"
+        fontSize="sm"
+        bg={bgColor}
+        whiteSpace="pre"
+        overflow="auto"
+        color={line.type === 'deleted' ? 'red.800' : line.type === 'added' ? 'green.800' : 'black'}
+      >
+        {line.content}
+      </Box>
+    </HStack>
+  );
+});
+
+DiffLine.displayName = 'DiffLine';
+
+const ResultsClassic = ({ sourceText, changedText, onDiffGenerated, appName, logo, onLineClick }) => {
   const borderColor = 'gray.200';
   const sourceLineColor = 'yellow.50';
   const changedLineColor = 'purple.50';  
@@ -59,15 +151,34 @@ const ResultsClassic = ({ sourceText, changedText, onDiffGenerated, appName, log
     }
   }, [diffResult, onDiffGenerated]);
 
+  // Optimized stats calculation using simple loop instead of reduce
   const stats = useMemo(() => {
-    return diffResult.reduce((acc, line) => {
-      const key = line.type === 'deleted' ? 'deletions' 
-                : line.type === 'added' ? 'additions' 
-                : 'unchanged';
-      acc[key] += 1;
-      return acc;
-    }, { deletions: 0, additions: 0, unchanged: 0 });
+    let deletions = 0;
+    let additions = 0;
+    let unchanged = 0;
+    
+    for (const line of diffResult) {
+      if (line.type === 'deleted') {
+        deletions++;
+      } else if (line.type === 'added') {
+        additions++;
+      } else {
+        unchanged++;
+      }
+    }
+    
+    return { deletions, additions, unchanged };
   }, [diffResult]);
+
+  // Memoize line click handler
+  const handleLineClick = useCallback((line) => {
+    if (onLineClick) {
+      onLineClick({
+        sourceLine: line.sourceLine,
+        changedLine: line.changedLine
+      });
+    }
+  }, [onLineClick]);
 
   if (!sourceText && !changedText) {
     return null;
@@ -113,94 +224,17 @@ const ResultsClassic = ({ sourceText, changedText, onDiffGenerated, appName, log
         </Box>
         
         <VStack className="classic-diff-lines" spacing={0} align="stretch">
-          {diffResult.map((line, index) => {
-            const bgColor =
-                line.type === 'deleted' ? 'red.100' 
-              : line.type === 'added' 
-              ? 'green.100' : 'white';
-
-            return (
-              <HStack
-                key={index}
-                className={`diff-line diff-line-${line.type}`}
-                data-line-type={line.type}
-                spacing={0}
-                borderBottom="1px solid"
-                borderColor={borderColor}
-              >
-                {/* Source line number */}
-                <Box
-                  className="line-number line-number-source"
-                  minW="50px"
-                  maxW="50px"
-                  px={2}
-                  py={1}
-                  borderRight="1px solid"
-                  borderColor={borderColor}
-                  textAlign="right"
-                  fontFamily="monospace"
-                  fontSize="sm"
-                  fontWeight="bold"
-                  bg={line.type === "added" ? "white" : sourceLineColor}
-                  color="black"
-                  userSelect="none"
-                >
-                  {line.sourceLine || ''}
-                </Box>
-
-                {/* Changed line number */}
-                <Box
-                  className="line-number line-number-changed"
-                  minW="50px"
-                  maxW="50px"
-                  px={2}
-                  py={1}
-                  borderRight="1px solid"
-                  borderColor={borderColor}
-                  textAlign="right"
-                  fontFamily="monospace"
-                  fontSize="sm"
-                  fontWeight="bold"
-                  bg={line.type === "deleted" ? "white" : changedLineColor}
-                  userSelect="none"
-                >
-                  {line.changedLine || ''}
-                </Box>
-
-                {/* Line prefix indicator */}
-                <Box
-                  className={`line-prefix line-prefix-${line.type}`}
-                  minW="30px"
-                  maxW="30px"
-                  px={2}
-                  py={1}
-                  fontFamily="monospace"
-                  fontSize="sm"
-                  fontWeight="bold"
-                  color={line.type === 'deleted' ? 'red.600' : line.type === 'added' ? 'green.600' : 'black'}
-                  userSelect="none"
-                >
-                  {line.type === 'deleted' ? '-' : line.type === 'added' ? '+' : ' '}
-                </Box>
-
-                {/* Line content */}
-                <Box
-                  className={`line-content line-content-${line.type}`}
-                  flex="1"
-                  px={2}
-                  py={1}
-                  fontFamily="monospace"
-                  fontSize="sm"
-                  bg={bgColor}
-                  whiteSpace="pre"
-                  overflow="auto"
-                  color={line.type === 'deleted' ? 'red.800' : line.type === 'added' ? 'green.800' : 'black'}
-                >
-                  {line.content}
-                </Box>
-              </HStack>
-            );
-          })}
+          {diffResult.map((line, index) => (
+            <DiffLine
+              key={index}
+              line={line}
+              index={index}
+              borderColor={borderColor}
+              sourceLineColor={sourceLineColor}
+              changedLineColor={changedLineColor}
+              onLineClick={handleLineClick}
+            />
+          ))}
         </VStack>
       </Box>
     </Box>

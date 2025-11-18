@@ -49,7 +49,7 @@ const Footer = ({ appConfig }) => {
       className="footer-container"
       bg="green.100" 
       color="black" 
-      py={12} 
+      py={9} 
       px={6}
       mb={6}
     >
