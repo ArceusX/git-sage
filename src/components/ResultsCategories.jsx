@@ -8,7 +8,7 @@ import { categories } from '../config';
 // Memoized CategorySection to prevent re-rendering when siblings update
 const MemoizedCategorySection = React.memo(CategorySection);
 
-const ResultsCategories = ({ analysis, onChangeClick, appName }) => {
+const ResultsCategories = ({ analysis, onChangeClick, appName, sourceFileName, changedFileName }) => {
   if (!analysis) return null;
   
   // OPTIMIZATION 7: Filter out empty categories to avoid rendering unused sections
@@ -25,6 +25,8 @@ const ResultsCategories = ({ analysis, onChangeClick, appName }) => {
           analysis={analysis}
           categories={categories}
           appName={appName}
+          sourceFileName={sourceFileName}
+          changedFileName={changedFileName}
         />
       </Box>
 

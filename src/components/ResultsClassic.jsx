@@ -96,7 +96,7 @@ const DiffLine = React.memo(({ line, index, borderColor, sourceLineColor, change
 
 DiffLine.displayName = 'DiffLine';
 
-const ResultsClassic = ({ sourceText, changedText, onDiffGenerated, appName, logo, onLineClick }) => {
+const ResultsClassic = ({ sourceText, changedText, onDiffGenerated, appName, logo, onLineClick, sourceFileName, changedFileName }) => {
   const borderColor = 'gray.200';
   const sourceLineColor = 'yellow.50';
   const changedLineColor = 'purple.50';  
@@ -191,6 +191,8 @@ const ResultsClassic = ({ sourceText, changedText, onDiffGenerated, appName, log
         <DownloadHTMLClassic
           diffResult={diffResult}
           appName={appName}
+          sourceFileName={sourceFileName}
+          changedFileName={changedFileName}
         />
       </Box>
 

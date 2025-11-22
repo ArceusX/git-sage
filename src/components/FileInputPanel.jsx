@@ -173,15 +173,15 @@ function getLang(title) {
   if (t.includes('python') || t.endsWith('.py')) return python();
   if (t.includes('java') || t.endsWith('.java')) return java();
   if (t.includes('cpp') || t.includes('c++') || t.endsWith('.cpp') || t.endsWith('.cc')) return cpp();
-  if (t.includes('ts') || t.endsWith('.ts')) return javascript({ typescript: true });
-  if (t.includes('js') || t.endsWith('.js')) return javascript();
+  if (t.includes('ts') || t.endsWith('.ts') || t.endsWith('.tsx')) return javascript({ typescript: true });
+  if (t.includes('js') || t.endsWith('.js') || t.endsWith('.jsx')) return javascript();
 
   // --- Additional web/config languages ---
   if (t.includes('sql') || t.endsWith('.sql')) return sql();
   if (t.includes('html') || t.endsWith('.html') || t.endsWith('.htm')) return html();
   if (t.includes('css') || t.endsWith('.css')) return css();
   if (t.includes('json') || t.endsWith('.json')) return json();
-  if (t.includes('md') || t.endsWith('.md')) return markdown();
+  if (t.includes('md') || t.endsWith('.md') || t.endsWith('.markdown')) return markdown();
   if (t.includes('yaml') || t.includes('yml') || t.endsWith('.yaml') || t.endsWith('.yml')) return yaml();
 
   // --- Fallback ---
@@ -190,7 +190,7 @@ function getLang(title) {
 
 
 // Main component
-const FileInputPanel = forwardRef(({ title, value, onChange, onFileUpload }, ref) => {
+const FileInputPanel = forwardRef(({ title, fileName, value, onChange, onFileUpload }, ref) => {
   const editorContainerRef = React.useRef(null);
   const [editor, setEditor] = useState(null);
   const [actionInfo, setActionInfo] = useState(null);
@@ -231,7 +231,7 @@ const FileInputPanel = forwardRef(({ title, value, onChange, onFileUpload }, ref
       extensions: [
         keymap.of([...defaultKeymap, ...historyKeymap]),
         history(),
-        getLang(title),
+        getLang(fileName || title), // Use fileName for language detection, fallback to title
         oneDark,
         EditorView.lineWrapping,
         // Gutter order: line numbers first, breakpoint column second
@@ -265,8 +265,35 @@ const FileInputPanel = forwardRef(({ title, value, onChange, onFileUpload }, ref
       }
     }
 
-    return () => view.destroy(); // destroy only once on unmount
+    return () => view.destroy();
   }, []);
+
+  // Update language when fileName changes
+  useEffect(() => {
+    if (!editor) return;
+    
+    // Reconfigure the editor with new language support
+    editor.dispatch({
+      effects: StateEffect.reconfigure.of([
+        keymap.of([...defaultKeymap, ...historyKeymap]),
+        history(),
+        getLang(fileName || title), // Use fileName for language detection, fallback to title
+        oneDark,
+        EditorView.lineWrapping,
+        lineNumbers(),
+        breakpointExt[0],
+        breakpointExt[1],
+        highlightExt[0],
+        EditorView.updateListener.of(update => {
+          if (update.docChanged) {
+            let val = update.state.doc.toString();
+            if (val === '\u200B') val = '';
+            onChange({ target: { value: val } });
+          }
+        })
+      ])
+    });
+  }, [fileName, editor]);
 
   // Calculate line height once when editor is ready
   useEffect(() => {
@@ -283,6 +310,22 @@ const FileInputPanel = forwardRef(({ title, value, onChange, onFileUpload }, ref
       editorContainerRef.current.style.maxHeight = `${lineHeight * 40}px`;
     }
   }, [lineHeight]);
+
+  // Update editor when value changes externally (from parent file upload)
+  useEffect(() => {
+    if (!editor || !value) return;
+    
+    const currentContent = editor.state.doc.toString();
+    if (currentContent !== value && value !== '\u200B') {
+      editor.dispatch({ 
+        changes: { 
+          from: 0, 
+          to: editor.state.doc.length, 
+          insert: value 
+        } 
+      });
+    }
+  }, [value, editor]);
 
   // Handlers
   const handleSave = () => {
@@ -305,17 +348,12 @@ const FileInputPanel = forwardRef(({ title, value, onChange, onFileUpload }, ref
 
   const handleUpload = e => {
     const file = e.target.files[0];
-    if (!file || !editor) return onFileUpload(e);
+    if (!file) return;
 
     const uploadDate = new Date().toLocaleString();
     setActionInfo({ type: 'upload', fileName: file.name, date: uploadDate });
 
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const content = ev.target.result || '\u200B';
-      editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: content } });
-    };
-    reader.readAsText(file);
+    // Let parent handle the file upload (which will update filename and trigger value change)
     onFileUpload(e);
   };
 

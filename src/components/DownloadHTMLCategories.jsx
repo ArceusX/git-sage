@@ -1,6 +1,6 @@
 import { Button, theme } from '@chakra-ui/react';
 
-const DownloadHTMLCategories = ({ analysis, appName, categories }) => {
+const DownloadHTMLCategories = ({ analysis, appName, categories, sourceFileName, changedFileName }) => {
 const generateHTML = () => {
   if (!analysis) return '';
 
@@ -8,6 +8,9 @@ const generateHTML = () => {
     const [name, shade] = token.split('.');
     return theme.colors?.[name]?.[shade] || '#CBD5E0';
   };
+
+  const displaySourceName = sourceFileName || '______';
+  const displayChangedName = changedFileName || '______';
 
   let html = `<!DOCTYPE html>
   <html lang="en">
@@ -18,19 +21,109 @@ const generateHTML = () => {
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { 
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         max-width: 800px; 
         margin: 20px auto; 
         padding: 20px; 
         background: #F7FAFC;
         line-height: 1.5;
       }
+      h2.app-heading {
+        color: #319795;
+        text-align: center;
+        margin-bottom: 8px;
+      }
+      .timestamp {
+        text-align: center;
+        font-size: 1.15rem;
+        color: red;
+        margin-bottom: 8px;
+      }
+      .filenames {
+        text-align: center;
+        font-size: 1.15rem;
+        color: green;
+        margin-bottom: 30px;
+      }
+      .category-section {
+        margin-bottom: 16px;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .category-header {
+        padding: 8px 12px;
+        color: white;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .category-title-container {
+        display: flex;
+        align-items: center;
+      }
+      .category-title {
+        font-size: 1rem;
+        font-weight: 600;
+      }
+      .category-badge {
+        background: rgba(0, 0, 0, 0.36);
+        color: white;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.875rem;
+        margin-left: 12px;
+        font-weight: 500;
+      }
+      .category-content {
+        padding: 16px;
+        background: white;
+      }
+      .change-item {
+        padding: 12px;
+        border-radius: 6px;
+        font-size: 0.875rem;
+      }
+      .change-line-info {
+        color: black;
+        margin-bottom: 8px;
+        font-size: 1rem;
+      }
+      .code-block {
+        font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        white-space: pre-wrap;
+        padding: 8px;
+      }
+      .code-block-deleted {
+        background: #FED7D7;
+      }
+      .code-block-added {
+        background: #C6F6D5;
+      }
+      .code-block-neutral {
+        background: #EBF8FF;
+      }
+      .removed-label {
+        font-weight: bold;
+        color: #C53030;
+        margin-bottom: 6px;
+        font-size: 1rem;
+      }
+      .added-label {
+        font-weight: bold;
+        color: #2F855A;
+        margin-bottom: 6px;
+        font-size: 0.875rem;
+      }
     </style>
   </head>
   <body>
-    <h2 class="app-heading" style="color: #319795; text-align: center; margin-bottom: 8px;">${appName}</h2>
-    <p style="text-align: center; font-size: 1.2rem; color: black; margin-bottom: 30px;">
+    <h2 class="app-heading">${appName}</h2>
+    <p class="timestamp">
       Downloaded on ${new Date().toLocaleString()}
+    </p>
+    <p class="filenames">
+      Source: ${displaySourceName} | Changed: ${displayChangedName}
     </p>
   `;
 
@@ -40,14 +133,14 @@ const generateHTML = () => {
       if (changes && changes.length > 0) {
         const categoryClassName = `category-${key}`;
         html += `
-  <div class="category-section ${categoryClassName}" data-category="${key}" data-count="${changes.length}" style="margin-bottom: 16px; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden;">
-    <div class="category-header ${categoryClassName}-header" data-expanded="true" style="background-color: ${resolveColor(color)}; padding: 12px; color: white; display: flex; justify-content: space-between; align-items: center;">
-      <div class="category-title-container" style="display: flex; align-items: center;">
-        <span class="category-title" style="font-size: 1.2rem; font-weight: 600;">${title}</span>
-        <span class="category-badge" style="background: rgba(0, 0, 0, 0.36); color: white; padding: 2px 8px; border-radius: 4px; font-size: 1rem; margin-left: 12px; font-weight: 500;">${changes.length}</span>
+  <div class="category-section ${categoryClassName}" data-category="${key}" data-count="${changes.length}">
+    <div class="category-header ${categoryClassName}-header" data-expanded="true" style="background-color: ${resolveColor(color)};">
+      <div class="category-title-container">
+        <span class="category-title">${title}</span>
+        <span class="category-badge">${changes.length}</span>
       </div>
     </div>
-    <div class="category-content ${categoryClassName}-content" style="padding: 16px; background: white;">
+    <div class="category-content ${categoryClassName}-content">
 `;
         changes.forEach((change, index) => {
           const isLast = index === changes.length - 1;
@@ -58,9 +151,9 @@ const generateHTML = () => {
           
           if (key === 'moveCodeBlock') {
             html += `
-      <div class="change-item change-${key}-${index}" data-change-index="${index}" data-line-number="${lineNumber}" style="padding: 12px; margin-bottom: ${marginBottom}; background: #FFFAF0; border-radius: 6px; font-size: 0.875rem;">
-        <div class="change-line-info" style="color: black; font-size: 1rem; margin-bottom: 8px;">Lines ${change.sourceLine}-${change.sourceLine + change.blockSize - 1} → Lines ${change.changedLine}-${change.changedLine + change.blockSize - 1} </div>
-        <div style="font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: pre-wrap; background: #EBF8FF; margin-top: 8px; padding: 8px;">${change.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+      <div class="change-item change-${key}-${index}" data-change-index="${index}" data-line-number="${lineNumber}" style="margin-bottom: ${marginBottom}; background: #FFFAF0;">
+        <div class="change-line-info">Lines ${change.sourceLine}-${change.sourceLine + change.blockSize - 1} → Lines ${change.changedLine}-${change.changedLine + change.blockSize - 1}</div>
+        <div class="code-block code-block-neutral" style="margin-top: 8px;">${change.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
       </div>
 `;
           } else if (key === 'deleteCode') {
@@ -69,9 +162,9 @@ const generateHTML = () => {
               : `Lines ${change.lineNumber}-${change.endLineNumber}`;
             const linesContent = (change.lines || []).join('\n');
             html += `
-      <div class="change-item change-${key}-${index}" data-change-index="${index}" data-line-number="${lineNumber}" style="padding: 12px; margin-bottom: ${marginBottom}; background: #FAF5FF; border-radius: 6px; font-size: 0.875rem;">
-        <div class="change-line-info" style="color: black; margin-bottom: 4px; font-size: 1rem;">${lineLabel} ${countLabel}</div>
-        <div style="font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: pre-wrap; background: #FED7D7; padding: 8px;">${linesContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+      <div class="change-item change-${key}-${index}" data-change-index="${index}" data-line-number="${lineNumber}" style="margin-bottom: ${marginBottom}; background: #FAF5FF;">
+        <div class="change-line-info" style="margin-bottom: 4px;">${lineLabel} ${countLabel}</div>
+        <div class="code-block code-block-deleted">${linesContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
       </div>
 `;
           } else if (key === 'addCode') {
@@ -80,9 +173,9 @@ const generateHTML = () => {
               : `Lines ${change.lineNumber}-${change.endLineNumber}`;
             const linesContent = (change.lines || []).join('\n');
             html += `
-      <div class="change-item change-${key}-${index}" data-change-index="${index}" data-line-number="${lineNumber}" style="padding: 12px; margin-bottom: ${marginBottom}; background: #EBF8FF; border-radius: 6px; font-size: 0.875rem;">
-        <div class="change-line-info" style="color: black; margin-bottom: 4px; font-size: 1rem;">${lineLabel} ${countLabel}</div>
-        <div style="font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: pre-wrap; background: #C6F6D5; padding: 8px;">${linesContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+      <div class="change-item change-${key}-${index}" data-change-index="${index}" data-line-number="${lineNumber}" style="margin-bottom: ${marginBottom}; background: #EBF8FF;">
+        <div class="change-line-info" style="margin-bottom: 4px;">${lineLabel} ${countLabel}</div>
+        <div class="code-block code-block-added">${linesContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
       </div>
 `;
           } else if (
@@ -92,22 +185,22 @@ const generateHTML = () => {
             const add = change.addedBlock || {};
             const delLineLabel = del.lineNumber === del.endLineNumber ? `Line ${del.lineNumber}` : `Lines ${del.lineNumber}-${del.endLineNumber}`;
             const addLineLabel = add.lineNumber === add.endLineNumber ? `Line ${add.lineNumber}` : `Lines ${add.lineNumber}-${add.endLineNumber}`;
-            const lineInfo = delLineLabel === addLineLabel ? delLineLabel : `${delLineLabel} → ${addLineLabel} `;
+            const lineInfo = delLineLabel === addLineLabel ? delLineLabel : `${delLineLabel} → ${addLineLabel}`;
             const delContent = (del.lines || []).join('\n');
             const addContent = (add.lines || []).join('\n');
             const delLines = (del.lines || []).length;
             const addLines = (add.lines || []).length;
             
             html += `
-      <div class="change-item change-${key}-${index}" data-change-index="${index}" data-line-number="${lineNumber}" style="padding: 12px; margin-bottom: ${marginBottom}; background: #FFFFF0; border-radius: 6px; font-size: 0.875rem;">
-        <div class="change-line-info" style="color: black; margin-bottom: 8px; font-size: 1rem;">${lineInfo}</div>
+      <div class="change-item change-${key}-${index}" data-change-index="${index}" data-line-number="${lineNumber}" style="margin-bottom: ${marginBottom}; background: #FFFFF0;">
+        <div class="change-line-info">${lineInfo}</div>
         <div style="margin-bottom: 12px;">
-          <div style="font-weight: bold; color: #C53030; margin-bottom: 6px; font-size: 1rem;">- Removed (${delLines} lines):</div>
-          <div style="font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: pre-wrap; background: #FED7D7; padding: 8px; border-radius: 2px;">${delContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+          <div class="removed-label">- Removed (${delLines} lines):</div>
+          <div class="code-block code-block-deleted" style="border-radius: 2px;">${delContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
         </div>
         <div>
-          <div style="font-weight: bold; color: #2F855A; margin-bottom: 6px; font-size: 0.875rem;">+ Added (${addLines} lines):</div>
-          <div style="font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: pre-wrap; background: #C6F6D5; padding: 8px; border-radius: 2px;">${addContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+          <div class="added-label">+ Added (${addLines} lines):</div>
+          <div class="code-block code-block-added" style="border-radius: 2px;">${addContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
         </div>
       </div>
 `;
@@ -130,16 +223,16 @@ const generateHTML = () => {
               
               const lineInfo = sourceLineLabel === changedLineLabel
                 ? sourceLineLabel
-                : `${sourceLineLabel} → ${changedLineLabel} `;
+                : `${sourceLineLabel} → ${changedLineLabel}`;
               
               const sourceContent = change.sourceLines.join('\n');
               const changedContent = change.changedLines.join('\n');
               
               html += `
-      <div class="change-item change-${key}-${index}" data-change-index="${index}" data-line-number="${lineNumber}" style="padding: 12px; margin-bottom: ${marginBottom}; background: #F7FAFC; border-radius: 6px; font-size: 0.875rem;">
-        <div class="change-line-info" style="color: black; margin-bottom: 4px; font-size: 1rem;">${lineInfo}</div>
-        <div style="font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: pre-wrap; background: #FED7D7; padding: 8px; margin-bottom: 4px;">${sourceContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-        <div style="font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: pre-wrap; background: #C6F6D5; padding: 8px;">${changedContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+      <div class="change-item change-${key}-${index}" data-change-index="${index}" data-line-number="${lineNumber}" style="margin-bottom: ${marginBottom}; background: #F7FAFC;">
+        <div class="change-line-info" style="margin-bottom: 4px;">${lineInfo}</div>
+        <div class="code-block code-block-deleted" style="margin-bottom: 4px;">${sourceContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+        <div class="code-block code-block-added">${changedContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
       </div>
 `;
             } else {
@@ -151,16 +244,16 @@ const generateHTML = () => {
               
               const lineInfo = sourceLineLabel === changedLineLabel
                 ? sourceLineLabel
-                : `${sourceLineLabel} → ${changedLineLabel} `;
+                : `${sourceLineLabel} → ${changedLineLabel}`;
               
               const source = change.source || '';
               const changed = change.changed || '';
               
               html += `
-      <div class="change-item change-${key}-${index}" data-change-index="${index}" data-line-number="${lineNumber}" style="padding: 12px; margin-bottom: ${marginBottom}; background: #F7FAFC; border-radius: 6px; font-size: 0.875rem;">
-        <div class="change-line-info" style="color: black; margin-bottom: 4px; font-size: 1rem;">${lineInfo}</div>
-        <div style="font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: pre-wrap; background: #FED7D7; padding: 4px; margin-bottom: 4px;">${source.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-        <div style="font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: pre-wrap; background: #C6F6D5; padding: 4px;">${changed.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+      <div class="change-item change-${key}-${index}" data-change-index="${index}" data-line-number="${lineNumber}" style="margin-bottom: ${marginBottom}; background: #F7FAFC;">
+        <div class="change-line-info" style="margin-bottom: 4px;">${lineInfo}</div>
+        <div class="code-block code-block-deleted" style="padding: 4px; margin-bottom: 4px;">${source.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+        <div class="code-block code-block-added" style="padding: 4px;">${changed.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
       </div>
 `;
             }

@@ -14,6 +14,7 @@ import {
   Tab,
   TabPanel,
   Image,
+  useToast,
 } from '@chakra-ui/react';
 import { 
   FileInputPanel, 
@@ -36,28 +37,77 @@ const MemoizedResultsClassic = React.memo(ResultsClassic);
 const App = ({appName = "Git Sage - Smart Diff Tool"}) => {
   const [sourceText, setSourceText] = useState('');
   const [changedText, setChangedText] = useState('');
+  const [sourceFileName, setSourceFileName] = useState('');
+  const [changedFileName, setChangedFileName] = useState('');
   const [analysis, setAnalysis] = useState(null);
   const [classicDiff, setClassicDiff] = useState(null);
   const [resultsWindow, setResultsWindow] = useState(null);
   const [portalRoot, setPortalRoot] = useState(null);
   
+  const toast = useToast();
+  
   // Refs for FileInputPanel components
   const sourceTextRef = useRef(null);
   const changedTextRef = useRef(null);
 
-  // Memoized file upload handler factory
-  const handleFileUpload = useCallback((setter) => (e) => {
+  // Helper function to get file extension
+  const getFileExtension = (fileName) => {
+    const lastDot = fileName.lastIndexOf('.');
+    return lastDot === -1 ? '' : fileName.substring(lastDot);
+  };
+
+  // Memoized file upload handlers
+  const handleSourceFileUpload = useCallback((e) => {
     const file = e.target.files[0];
     if (file) {
+      // Check if extensions differ
+      if (changedFileName) {
+        const sourceExt = getFileExtension(file.name);
+        const changedExt = getFileExtension(changedFileName);
+        if (sourceExt && changedExt && sourceExt !== changedExt) {
+          toast({
+            title: 'Different file extensions',
+            description: `You're comparing ${sourceExt} and ${changedExt} files. Are you sure you want to compare them?`,
+            status: 'warning',
+            duration: 6000,
+            isClosable: true,
+            position: 'top',
+          });
+        }
+      }
+      
+      setSourceFileName(file.name);
       const reader = new FileReader();
-      reader.onload = (event) => setter(event.target.result);
+      reader.onload = (event) => setSourceText(event.target.result);
       reader.readAsText(file);
     }
-  }, []);
+  }, [changedFileName, toast]);
 
-  // Memoized individual handlers
-  const handleSourceFileUpload = useMemo(() => handleFileUpload(setSourceText), [handleFileUpload]);
-  const handleChangedFileUpload = useMemo(() => handleFileUpload(setChangedText), [handleFileUpload]);
+  const handleChangedFileUpload = useCallback((e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Check if extensions differ
+      if (sourceFileName) {
+        const changedExt = getFileExtension(file.name);
+        const sourceExt = getFileExtension(sourceFileName);
+        if (sourceExt && changedExt && sourceExt !== changedExt) {
+          toast({
+            title: 'Different file extensions',
+            description: `You're comparing ${sourceExt} and ${changedExt} files. Are you sure you want to compare them?`,
+            status: 'warning',
+            duration: 6000,
+            isClosable: true,
+            position: 'top',
+          });
+        }
+      }
+      
+      setChangedFileName(file.name);
+      const reader = new FileReader();
+      reader.onload = (event) => setChangedText(event.target.result);
+      reader.readAsText(file);
+    }
+  }, [sourceFileName, toast]);
 
   // Memoized compare handler
   const handleCompare = useCallback(() => {
@@ -68,10 +118,10 @@ const App = ({appName = "Git Sage - Smart Diff Tool"}) => {
   // Memoized change click handler
   const handleChangeClick = useCallback(({ sourceLineNumber, changedLineNumber }) => {
     if (sourceTextRef.current) {
-      sourceTextRef.current.scrollToLine(sourceLineNumber);
+      sourceTextRef.current.highlightLine(sourceLineNumber);
     }
     if (changedTextRef.current) {
-      changedTextRef.current.scrollToLine(changedLineNumber);
+      changedTextRef.current.highlightLine(changedLineNumber);
     }
     
     // Scroll the page to show the file input panels
@@ -130,7 +180,7 @@ const App = ({appName = "Git Sage - Smart Diff Tool"}) => {
               body {
                 margin: 0;
                 padding: 20px;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                 background-color: #F9FAFA;
               }
               #root {
@@ -191,6 +241,8 @@ const App = ({appName = "Git Sage - Smart Diff Tool"}) => {
               analysis={analysis} 
               onChangeClick={handleChangeClick}
               appName={appName}
+              sourceFileName={sourceFileName}
+              changedFileName={changedFileName}
             />
           </TabPanel>
           <TabPanel>
@@ -200,6 +252,8 @@ const App = ({appName = "Git Sage - Smart Diff Tool"}) => {
               onDiffGenerated={setClassicDiff}
               onLineClick={handleLineClick}
               appName={appName}
+              sourceFileName={sourceFileName}
+              changedFileName={changedFileName}
             />
           </TabPanel>
         </TabPanels>
@@ -241,20 +295,20 @@ const App = ({appName = "Git Sage - Smart Diff Tool"}) => {
               <FileInputPanel
                 ref={sourceTextRef}
                 title="Source Text"
+                fileName={sourceFileName}
                 value={sourceText}
                 onChange={(e) => setSourceText(e.target.value)}
                 onFileUpload={handleSourceFileUpload}
-                panelType="source"
               />
             </Box>
             <Box w={{ base: "100%", lg: "50%" }}>
               <FileInputPanel
                 ref={changedTextRef}
                 title="Changed Text"
+                fileName={changedFileName}
                 value={changedText}
                 onChange={(e) => setChangedText(e.target.value)}
                 onFileUpload={handleChangedFileUpload}
-                panelType="changed"
               />
             </Box>
           </Stack>

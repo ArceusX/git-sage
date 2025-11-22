@@ -40,6 +40,8 @@ const ScrollToTopIcon = () => (
 );
 
 const Footer = ({ appConfig }) => {
+  const iconSize = appConfig.meta.iconSize ?? 36;
+
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -68,7 +70,7 @@ const Footer = ({ appConfig }) => {
             className="footer-logo"
             src={appConfig.meta.icon}
             alt={appConfig.meta.appName}
-            boxSize="40px"
+            boxSize={`${iconSize}px`}
           />
           <Text className="footer-app-name" fontSize="xl" fontWeight="semibold">
             {appConfig.meta.appName}
@@ -80,11 +82,11 @@ const Footer = ({ appConfig }) => {
           <Text className="footer-author">🧑‍💻 {appConfig.personal.author}</Text>
           <Link
             className="footer-email"
-            href={`mailto:${appConfig.personal.authorEmail}`}
+            href={`mailto:${appConfig.personal.email}`}
             color="blue.600"
             _hover={{ color: 'blue.400' }}
           >
-            📧 {appConfig.personal.authorEmail}
+            📧 {appConfig.personal.email}
           </Link>
         </VStack>
 
@@ -98,21 +100,21 @@ const Footer = ({ appConfig }) => {
               target="_blank"
               rel="noopener noreferrer"
               aria-label="GitHub"
-              icon={<FaGithub size={36} />}
+              icon={<FaGithub size={iconSize} />}
               variant="ghost"
               color="blue.600"
               _hover={{ color: 'blue.400' }}
             />
           )}
-          {appConfig.personal.linked && (
+          {appConfig.personal.linkedin && (
             <IconButton
               className="footer-linkedin-button"
               as="a"
-              href={appConfig.personal.linked}
+              href={appConfig.personal.linkedin}
               target="_blank"
               rel="noopener noreferrer"
               aria-label="LinkedIn"
-              icon={<FaLinkedin size={36} />}
+              icon={<FaLinkedin size={iconSize} />}
               variant="ghost"
               color="blue.600"
               _hover={{ color: 'blue.400' }}

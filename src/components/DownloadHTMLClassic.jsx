@@ -1,6 +1,6 @@
 import { Button } from '@chakra-ui/react';
 
-const DownloadHTMLClassic = ({ diffResult, appName }) => {
+const DownloadHTMLClassic = ({ diffResult, appName, sourceFileName, changedFileName }) => {
   const generateHTML = () => {
     if (!diffResult || !diffResult.length) return '';
 
@@ -12,6 +12,9 @@ const DownloadHTMLClassic = ({ diffResult, appName }) => {
       return acc;
     }, { deletions: 0, additions: 0, unchanged: 0 });
 
+    const displaySourceName = sourceFileName || '______';
+    const displayChangedName = changedFileName || '______';
+
     let html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -21,7 +24,7 @@ const DownloadHTMLClassic = ({ diffResult, appName }) => {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { 
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       max-width: 1000px; 
       margin: 20px auto; 
       padding: 20px; 
@@ -35,8 +38,14 @@ const DownloadHTMLClassic = ({ diffResult, appName }) => {
     }
     .timestamp {
       text-align: center;
-      font-size: 1.25rem;
-      color: black;
+      font-size: 1.15rem;
+      color: red;
+      margin-bottom: 8px;
+    }
+    .filenames {
+      text-align: center;
+      font-size: 1.15rem;
+      color: green;
       margin-bottom: 30px;
     }
     .stats {
@@ -70,9 +79,8 @@ const DownloadHTMLClassic = ({ diffResult, appName }) => {
       border-bottom: 1px solid #E2E8F0;
     }
     .line-number {
-      min-width: 50px;
-      max-width: 50px;
-      padding: 4px 8px;
+      width: 48px;
+      padding: 4px 6px;
       text-align: right;
       font-family: monospace;
       font-size: 0.875rem;
@@ -130,8 +138,11 @@ const DownloadHTMLClassic = ({ diffResult, appName }) => {
 </head>
 <body>
   <h2 class="app-heading">${appName}</h2>
-  <p class="timestamp" style="text-align: center; font-size: 1.2rem; color: black; margin-bottom: 30px;">
+  <p class="timestamp">
     Downloaded on ${new Date().toLocaleString()}
+  </p>
+  <p class="filenames">
+    Source: ${displaySourceName} | Changed: ${displayChangedName}
   </p>
   
   <div class="diff-container">
